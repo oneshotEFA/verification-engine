@@ -17,7 +17,7 @@
   "bugs": {
     "url": "https://github.com/oneshotEFA/verification-engine/issues"
   },
-  "homepage": "https://github.com/oneshotEFA/verification-engine#readme",
+  "homepage": "https://local-pay-ten.vercel.app/",
   "files": [
     "dist",
     "README.md",

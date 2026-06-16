@@ -9,6 +9,7 @@
 [![npm version](https://img.shields.io/npm/v/@localpay/verification-engine?color=00C896&labelColor=0D1117&style=flat-square)](https://www.npmjs.com/package/@localpay/verification-engine)
 [![npm downloads](https://img.shields.io/npm/dm/@localpay/verification-engine?color=00C896&labelColor=0D1117&style=flat-square)](https://www.npmjs.com/package/@localpay/verification-engine)
 [![License: MIT](https://img.shields.io/badge/license-MIT-00C896?labelColor=0D1117&style=flat-square)](./LICENSE)
+[![DOCS](https://img.shields.io/badge/docs-localpay-00C896?labelColor=0D1117&style=flat-square)](https://local-pay-ten.vercel.app/)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-00C896?labelColor=0D1117&style=flat-square)](https://nodejs.org)
 [![CI](https://img.shields.io/github/actions/workflow/status/oneshotEFA/verification-engine/ci.yml?branch=publish&label=CI&color=00C896&labelColor=0D1117&style=flat-square)](https://github.com/oneshotEFA/verification-engine/actions)
 

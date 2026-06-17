@@ -1,6 +1,9 @@
 import { PARSER_REGISTRY } from "../parsers";
 import { ParserRegistry } from "../shared/parser.interface";
 import { ProxyResolver } from "../shared/proxy.types";
+import { UrlValidationConfig } from "../validation/types";
+import { URL_VALIDATION_REGISTRY } from "../validation/registry";
+import { validateReceiptUrl } from "../validation/validate-receipt-url";
 import { BankFetchService } from "./bank-fetch.service";
 
 export type VerificationMethod =
@@ -55,6 +58,9 @@ export type VerifyResult =
  *   // With custom parsers (extend or override)
  *   const engine = new VerificationEngine({ parsers: { ...PARSER_REGISTRY, MY_BANK: new MyParser() } });
  *
+ *   // With custom URL validators (extend or override)
+ *   const engine = new VerificationEngine({ urlValidators: { ...URL_VALIDATION_REGISTRY, MY_BANK: MY_CONFIG } });
+ *
  *   const result = await engine.verify({
  *     bank: 'CBE',
  *     amount: 500,
@@ -66,16 +72,20 @@ export class VerificationEngine {
   private readonly parsers: ParserRegistry;
   private readonly fetcher: BankFetchService;
   private readonly ocrReader: (input: RawProof) => Promise<string>;
+  private readonly urlValidators: Record<string, UrlValidationConfig>;
 
   constructor(options?: {
     proxyResolver?: ProxyResolver | null;
     ocrReader?: (input: RawProof) => Promise<string>;
     /** Override or extend the default parser registry */
     parsers?: ParserRegistry;
+    /** Override or extend the default URL validator registry */
+    urlValidators?: Record<string, UrlValidationConfig>;
   }) {
     this.fetcher = new BankFetchService(options?.proxyResolver ?? null);
     this.parsers = options?.parsers ?? PARSER_REGISTRY;
     this.ocrReader = options?.ocrReader ?? readTextWithTesseract;
+    this.urlValidators = options?.urlValidators ?? URL_VALIDATION_REGISTRY;
   }
 
   async verify(payload: VerifyPayload): Promise<VerifyResult> {
@@ -153,6 +163,17 @@ export class VerificationEngine {
           };
       }
 
+      const config = this.urlValidators[payload.bank];
+
+      if (!config) {
+        return {
+          status: "FAIL",
+          reason: `No URL validator registered for bank: ${payload.bank}`,
+        };
+      }
+
+      link = validateReceiptUrl(link, config);
+
       const fetched = await parser.fetch(link, {
         fetcher: this.fetcher,
         countryCode,
@@ -163,7 +184,13 @@ export class VerificationEngine {
         return { status: "FAIL", reason: "Parser returned no receipt data" };
       }
 
-      if (!amountsMatch(payload.amount, receipt.receipt.amount, payload.amountTolerance)) {
+      if (
+        !amountsMatch(
+          payload.amount,
+          receipt.receipt.amount,
+          payload.amountTolerance,
+        )
+      ) {
         return {
           status: "FAIL",
           reason: `Receipt amount ${receipt.receipt.amount || "(empty)"} does not match expected amount ${payload.amount}`,

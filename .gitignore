@@ -5,3 +5,4 @@ dist/
 npm-debug.log*
 plan.md
 node_modules/
+scripts/

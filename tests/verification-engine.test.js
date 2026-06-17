@@ -3,15 +3,6 @@
  *
  * Uses Node.js built-in test runner (node:test + node:assert/strict).
  * Run with: npm test
- *
- * Tests are grouped into:
- *   1. date-parser.util   — pure unit, no I/O
- *   2. Parser.extract()   — pure unit, no I/O
- *   3. Parser.transactionRef() — pure unit, no I/O
- *   4. VerificationEngine routing — mock parsers, no network
- *   5. VerificationEngine amount validation
- *   6. VerificationEngine OCR path
- *   7. BankFetchService   — proxy config logic (no real network)
  */
 
 const assert = require("node:assert/strict");
@@ -35,12 +26,25 @@ const {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * A passthrough UrlValidationConfig for the "TEST" bank.
+ * The engine looks up URL_VALIDATION_REGISTRY[bank] — since "TEST" is not a
+ * real bank, we inject this via the new `urlValidators` constructor option so
+ * the engine can proceed past the URL validation gate in unit tests.
+ */
+const TEST_URL_VALIDATOR = {
+  domains: ["bank.test", "custom.test"],
+  validate: () => {}, // always passes
+};
+
+/** Convenience: the urlValidators map every mock-based test needs */
+const TEST_URL_VALIDATORS = { TEST: TEST_URL_VALIDATOR };
+
 /** Build a minimal mock parser for VerificationEngine routing tests */
 function mockParser({
   extractedLink = "https://bank.test/receipt",
   transactionRefLink = null,
   amount = "500.00",
-  status = "SUCCESS",
 } = {}) {
   return {
     extract: () => ({ link: extractedLink }),
@@ -87,7 +91,7 @@ describe("safeParsDate", () => {
     assert.ok(d instanceof Date);
     assert.ok(!isNaN(d.getTime()));
     assert.equal(d.getUTCFullYear(), 2026);
-    assert.equal(d.getUTCMonth(), 1); // February = 1
+    assert.equal(d.getUTCMonth(), 1);
     assert.equal(d.getUTCDate(), 11);
   });
 
@@ -95,7 +99,7 @@ describe("safeParsDate", () => {
     const d = safeParsDate("18-03-2026 21:46:09");
     assert.ok(d instanceof Date);
     assert.equal(d.getUTCFullYear(), 2026);
-    assert.equal(d.getUTCMonth(), 2); // March = 2
+    assert.equal(d.getUTCMonth(), 2);
     assert.equal(d.getUTCDate(), 18);
   });
 
@@ -109,7 +113,7 @@ describe("safeParsDate", () => {
     const d = safeParsDate("23/01/26 14:04");
     assert.ok(d instanceof Date);
     assert.equal(d.getUTCFullYear(), 2026);
-    assert.equal(d.getUTCMonth(), 0); // January = 0
+    assert.equal(d.getUTCMonth(), 0);
     assert.equal(d.getUTCDate(), 23);
   });
 
@@ -302,13 +306,14 @@ describe("Parser.transactionRef() — all four banks", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. VerificationEngine — routing
+// 4. VerificationEngine — LINK method
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("VerificationEngine — LINK method", () => {
   it("passes link directly to fetch, returns SUCCESS", async () => {
     const engine = new VerificationEngine({
       parsers: { TEST: mockParser({ amount: "250" }) },
+      urlValidators: TEST_URL_VALIDATORS,
     });
     const result = await engine.verify({
       bank: "TEST",
@@ -352,7 +357,10 @@ describe("VerificationEngine — LINK method", () => {
         },
       }),
     };
-    const engine = new VerificationEngine({ parsers: { TEST: parser } });
+    const engine = new VerificationEngine({
+      parsers: { TEST: parser },
+      urlValidators: TEST_URL_VALIDATORS,
+    });
     await engine.verify({
       bank: "TEST",
       amount: 100,
@@ -382,16 +390,24 @@ describe("VerificationEngine — LINK method", () => {
         },
       }),
     };
-    const engine = new VerificationEngine({ parsers: { TEST: parser } });
+    const engine = new VerificationEngine({
+      parsers: { TEST: parser },
+      urlValidators: TEST_URL_VALIDATORS,
+    });
     await engine.verify({
       bank: "TEST",
       amount: 100,
       verMethod: "LINK",
       rawProof: "https://bank.test",
+      // countryCode intentionally omitted — should default to "ET"
     });
     assert.equal(capturedCountry, "ET");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. VerificationEngine — SMS method
+// ─────────────────────────────────────────────────────────────────────────────
 
 describe("VerificationEngine — SMS method", () => {
   it("calls extract() then fetch(), returns SUCCESS", async () => {
@@ -414,7 +430,10 @@ describe("VerificationEngine — SMS method", () => {
         },
       }),
     };
-    const engine = new VerificationEngine({ parsers: { TEST: parser } });
+    const engine = new VerificationEngine({
+      parsers: { TEST: parser },
+      urlValidators: TEST_URL_VALIDATORS,
+    });
     const result = await engine.verify({
       bank: "TEST",
       amount: 100,
@@ -443,6 +462,7 @@ describe("VerificationEngine — SMS method", () => {
           }),
         },
       },
+      urlValidators: TEST_URL_VALIDATORS,
     });
     const result = await engine.verify({
       bank: "TEST",
@@ -454,6 +474,10 @@ describe("VerificationEngine — SMS method", () => {
     assert.match(result.reason, /Could not extract link from SMS/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6. VerificationEngine — TRANSACTION_REF method
+// ─────────────────────────────────────────────────────────────────────────────
 
 describe("VerificationEngine — TRANSACTION_REF method", () => {
   it("uses transactionRef() when available", async () => {
@@ -478,7 +502,10 @@ describe("VerificationEngine — TRANSACTION_REF method", () => {
         },
       }),
     };
-    const engine = new VerificationEngine({ parsers: { TEST: parser } });
+    const engine = new VerificationEngine({
+      parsers: { TEST: parser },
+      urlValidators: TEST_URL_VALIDATORS,
+    });
     const result = await engine.verify({
       bank: "TEST",
       amount: 500,
@@ -509,7 +536,10 @@ describe("VerificationEngine — TRANSACTION_REF method", () => {
         },
       }),
     };
-    const engine = new VerificationEngine({ parsers: { TEST: parser } });
+    const engine = new VerificationEngine({
+      parsers: { TEST: parser },
+      urlValidators: TEST_URL_VALIDATORS,
+    });
     await engine.verify({
       bank: "TEST",
       amount: 100,
@@ -521,19 +551,20 @@ describe("VerificationEngine — TRANSACTION_REF method", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 5. VerificationEngine — amount validation
+// 7. VerificationEngine — amount validation
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("VerificationEngine — amount validation", () => {
   it("fails when amounts differ beyond default tolerance (0.01)", async () => {
     const engine = new VerificationEngine({
       parsers: { TEST: mockParser({ amount: "10.00" }) },
+      urlValidators: TEST_URL_VALIDATORS,
     });
     const result = await engine.verify({
       bank: "TEST",
       amount: 500,
       verMethod: "LINK",
-      rawProof: "https://bank.test",
+      rawProof: "https://bank.test/receipt",
     });
     assert.equal(result.status, "FAIL");
     assert.match(result.reason, /does not match expected amount/);
@@ -542,12 +573,13 @@ describe("VerificationEngine — amount validation", () => {
   it("passes when amounts match exactly", async () => {
     const engine = new VerificationEngine({
       parsers: { TEST: mockParser({ amount: "500.00" }) },
+      urlValidators: TEST_URL_VALIDATORS,
     });
     const result = await engine.verify({
       bank: "TEST",
       amount: 500,
       verMethod: "LINK",
-      rawProof: "https://bank.test",
+      rawProof: "https://bank.test/receipt",
     });
     assert.equal(result.status, "SUCCESS");
   });
@@ -555,12 +587,13 @@ describe("VerificationEngine — amount validation", () => {
   it("passes when difference is within default tolerance", async () => {
     const engine = new VerificationEngine({
       parsers: { TEST: mockParser({ amount: "500.005" }) },
+      urlValidators: TEST_URL_VALIDATORS,
     });
     const result = await engine.verify({
       bank: "TEST",
       amount: 500,
       verMethod: "LINK",
-      rawProof: "https://bank.test",
+      rawProof: "https://bank.test/receipt",
     });
     assert.equal(result.status, "SUCCESS");
   });
@@ -568,13 +601,13 @@ describe("VerificationEngine — amount validation", () => {
   it("respects custom amountTolerance", async () => {
     const engine = new VerificationEngine({
       parsers: { TEST: mockParser({ amount: "501.00" }) },
+      urlValidators: TEST_URL_VALIDATORS,
     });
-    // With default tolerance (0.01) this would fail; with tolerance=2 it passes
     const result = await engine.verify({
       bank: "TEST",
       amount: 500,
       verMethod: "LINK",
-      rawProof: "https://bank.test",
+      rawProof: "https://bank.test/receipt",
       amountTolerance: 2,
     });
     assert.equal(result.status, "SUCCESS");
@@ -583,12 +616,13 @@ describe("VerificationEngine — amount validation", () => {
   it("strips currency symbols from amount before comparing", async () => {
     const engine = new VerificationEngine({
       parsers: { TEST: mockParser({ amount: "ETB 500.00" }) },
+      urlValidators: TEST_URL_VALIDATORS,
     });
     const result = await engine.verify({
       bank: "TEST",
       amount: 500,
       verMethod: "LINK",
-      rawProof: "https://bank.test",
+      rawProof: "https://bank.test/receipt",
     });
     assert.equal(result.status, "SUCCESS");
   });
@@ -596,12 +630,13 @@ describe("VerificationEngine — amount validation", () => {
   it("strips commas from large amounts before comparing", async () => {
     const engine = new VerificationEngine({
       parsers: { TEST: mockParser({ amount: "9,540.00" }) },
+      urlValidators: TEST_URL_VALIDATORS,
     });
     const result = await engine.verify({
       bank: "TEST",
       amount: 9540,
       verMethod: "LINK",
-      rawProof: "https://bank.test",
+      rawProof: "https://bank.test/receipt",
     });
     assert.equal(result.status, "SUCCESS");
   });
@@ -609,12 +644,13 @@ describe("VerificationEngine — amount validation", () => {
   it("fails when receipt amount is empty", async () => {
     const engine = new VerificationEngine({
       parsers: { TEST: mockParser({ amount: "" }) },
+      urlValidators: TEST_URL_VALIDATORS,
     });
     const result = await engine.verify({
       bank: "TEST",
       amount: 100,
       verMethod: "LINK",
-      rawProof: "https://bank.test",
+      rawProof: "https://bank.test/receipt",
     });
     assert.equal(result.status, "FAIL");
     assert.match(result.reason, /does not match expected amount/);
@@ -622,7 +658,7 @@ describe("VerificationEngine — amount validation", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 6. VerificationEngine — OCR path
+// 8. VerificationEngine — OCR / SCREENSHOT method
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("VerificationEngine — OCR / SCREENSHOT method", () => {
@@ -650,6 +686,7 @@ describe("VerificationEngine — OCR / SCREENSHOT method", () => {
 
     const engine = new VerificationEngine({
       parsers: { TEST: parser },
+      urlValidators: TEST_URL_VALIDATORS,
       ocrReader: async (input) => {
         ocrInput = input;
         return "your transaction number is OCR1";
@@ -671,6 +708,7 @@ describe("VerificationEngine — OCR / SCREENSHOT method", () => {
   it("SCREENSHOT method behaves identically to OCR", async () => {
     const engine = new VerificationEngine({
       parsers: { TEST: mockParser({ amount: "100" }) },
+      urlValidators: TEST_URL_VALIDATORS,
       ocrReader: async () => "link https://bank.test/receipt",
     });
     const result = await engine.verify({
@@ -684,13 +722,13 @@ describe("VerificationEngine — OCR / SCREENSHOT method", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 7. VerificationEngine — error handling
+// 9. VerificationEngine — error handling
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("VerificationEngine — error handling", () => {
   it("returns FAIL when parser.fetch() throws", async () => {
     const parser = {
-      extract: () => ({ link: "https://bank.test" }),
+      extract: () => ({ link: "https://bank.test/receipt" }),
       fetch: async () => {
         throw new Error("Network timeout");
       },
@@ -705,12 +743,15 @@ describe("VerificationEngine — error handling", () => {
         },
       }),
     };
-    const engine = new VerificationEngine({ parsers: { TEST: parser } });
+    const engine = new VerificationEngine({
+      parsers: { TEST: parser },
+      urlValidators: TEST_URL_VALIDATORS,
+    });
     const result = await engine.verify({
       bank: "TEST",
       amount: 100,
       verMethod: "LINK",
-      rawProof: "https://bank.test",
+      rawProof: "https://bank.test/receipt",
     });
     assert.equal(result.status, "FAIL");
     assert.match(result.reason, /Network timeout/);
@@ -718,16 +759,19 @@ describe("VerificationEngine — error handling", () => {
 
   it("returns FAIL when receiptParser() returns null", async () => {
     const parser = {
-      extract: () => ({ link: "https://bank.test" }),
+      extract: () => ({ link: "https://bank.test/receipt" }),
       fetch: async () => ({ page: "" }),
       receiptParser: async () => null,
     };
-    const engine = new VerificationEngine({ parsers: { TEST: parser } });
+    const engine = new VerificationEngine({
+      parsers: { TEST: parser },
+      urlValidators: TEST_URL_VALIDATORS,
+    });
     const result = await engine.verify({
       bank: "TEST",
       amount: 100,
       verMethod: "LINK",
-      rawProof: "https://bank.test",
+      rawProof: "https://bank.test/receipt",
     });
     assert.equal(result.status, "FAIL");
     assert.match(result.reason, /Parser returned no receipt data/);
@@ -736,6 +780,7 @@ describe("VerificationEngine — error handling", () => {
   it("returns FAIL for unsupported verMethod", async () => {
     const engine = new VerificationEngine({
       parsers: { TEST: mockParser() },
+      urlValidators: TEST_URL_VALIDATORS,
     });
     const result = await engine.verify({
       bank: "TEST",
@@ -749,13 +794,14 @@ describe("VerificationEngine — error handling", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 8. VerificationEngine — custom parsers and registry
+// 10. VerificationEngine — custom parsers and registry
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("VerificationEngine — custom parsers", () => {
   it("getSupportedBanks() returns all registered keys", () => {
     const engine = new VerificationEngine({
       parsers: { BANK_A: mockParser(), BANK_B: mockParser() },
+      urlValidators: { BANK_A: TEST_URL_VALIDATOR, BANK_B: TEST_URL_VALIDATOR },
     });
     const banks = engine.getSupportedBanks();
     assert.ok(banks.includes("BANK_A"));
@@ -774,6 +820,7 @@ describe("VerificationEngine — custom parsers", () => {
     const customParser = mockParser({ amount: "999" });
     const engine = new VerificationEngine({
       parsers: { ...PARSER_REGISTRY, CUSTOM_BANK: customParser },
+      urlValidators: { CUSTOM_BANK: TEST_URL_VALIDATOR },
     });
     const banks = engine.getSupportedBanks();
     assert.ok(banks.includes("CUSTOM_BANK"));
@@ -783,14 +830,14 @@ describe("VerificationEngine — custom parsers", () => {
       bank: "CUSTOM_BANK",
       amount: 999,
       verMethod: "LINK",
-      rawProof: "https://custom.test",
+      rawProof: "https://custom.test/receipt",
     });
     assert.equal(result.status, "SUCCESS");
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 9. BankFetchService — proxy config
+// 11. BankFetchService — proxy config
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("BankFetchService — proxy resolution", () => {
@@ -809,21 +856,15 @@ describe("BankFetchService — proxy resolution", () => {
     const proxyResolver = {
       resolve: async (code) => {
         resolvedCode = code;
-        return null; // no proxy — just testing the call
+        return null;
       },
     };
-
     const svc = new BankFetchService(proxyResolver);
-
-    // We can't make a real network call in tests, but we can verify
-    // the resolver is called. Use a URL that will immediately fail
-    // so we can catch FetchError without a real network dependency.
     try {
       await svc.fetch("http://0.0.0.0:1", "KE", { timeoutMs: 500 });
     } catch (err) {
       assert.ok(err instanceof FetchError);
     }
-
     assert.equal(resolvedCode, "KE");
   });
 
@@ -842,7 +883,7 @@ describe("BankFetchService — proxy resolution", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 10. ProxyType enum
+// 12. ProxyType enum
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("ProxyType enum", () => {

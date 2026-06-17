@@ -1,6 +1,7 @@
 import { PARSER_REGISTRY } from "../parsers";
 import { ParserRegistry } from "../shared/parser.interface";
 import { ProxyResolver } from "../shared/proxy.types";
+import { BANK_URL_PIPE_REGISTRY } from "../validation/registry";
 import { BankFetchService } from "./bank-fetch.service";
 
 export type VerificationMethod =
@@ -152,6 +153,21 @@ export class VerificationEngine {
             reason: `Unsupported verification method: ${payload.verMethod}`,
           };
       }
+      const validator = BANK_URL_PIPE_REGISTRY[payload.bank];
+      if (!validator) {
+        return {
+          status: "FAIL",
+          reason: `No URL validator registered for bank: ${payload.bank}`,
+        };
+      }
+      try {
+        validator.transform(link);
+      } catch (e) {
+        return {
+          status: "FAIL",
+          reason: e instanceof Error ? e.message : "⚠️ Invalid receipt link.",
+        };
+      }
 
       const fetched = await parser.fetch(link, {
         fetcher: this.fetcher,
@@ -163,7 +179,13 @@ export class VerificationEngine {
         return { status: "FAIL", reason: "Parser returned no receipt data" };
       }
 
-      if (!amountsMatch(payload.amount, receipt.receipt.amount, payload.amountTolerance)) {
+      if (
+        !amountsMatch(
+          payload.amount,
+          receipt.receipt.amount,
+          payload.amountTolerance,
+        )
+      ) {
         return {
           status: "FAIL",
           reason: `Receipt amount ${receipt.receipt.amount || "(empty)"} does not match expected amount ${payload.amount}`,

@@ -1,7 +1,8 @@
 import { PARSER_REGISTRY } from "../parsers";
 import { ParserRegistry } from "../shared/parser.interface";
 import { ProxyResolver } from "../shared/proxy.types";
-import { BANK_URL_PIPE_REGISTRY } from "../validation/registry";
+import { URL_VALIDATION_REGISTRY } from "../validation/registry";
+import { validateReceiptUrl } from "../validation/validate-receipt-url";
 import { BankFetchService } from "./bank-fetch.service";
 
 export type VerificationMethod =
@@ -153,21 +154,16 @@ export class VerificationEngine {
             reason: `Unsupported verification method: ${payload.verMethod}`,
           };
       }
-      const validator = BANK_URL_PIPE_REGISTRY[payload.bank];
-      if (!validator) {
+      const config = URL_VALIDATION_REGISTRY[payload.bank];
+
+      if (!config) {
         return {
           status: "FAIL",
           reason: `No URL validator registered for bank: ${payload.bank}`,
         };
       }
-      try {
-        validator.transform(link);
-      } catch (e) {
-        return {
-          status: "FAIL",
-          reason: e instanceof Error ? e.message : "⚠️ Invalid receipt link.",
-        };
-      }
+
+      link = validateReceiptUrl(link, config);
 
       const fetched = await parser.fetch(link, {
         fetcher: this.fetcher,

@@ -1,8 +1,9 @@
-import { BankUrlValidator } from "./type";
-import { CBEBankUrlPipe } from "./cbe/cbe-pipe";
-import { TelebirrUrlPipe } from "./telebirr/telebirr-pipe";
+import { CBE_CONFIG } from "./ethiopia/cbe/config";
+import { TELEBIRR_CONFIG } from "./ethiopia/telebirr/config";
+import { EBIRR_CONFIG } from "./ethiopia/ebirr/config";
 
-export const BANK_URL_PIPE_REGISTRY: Record<string, BankUrlValidator> = {
-  CBE: new CBEBankUrlPipe(),
-  TELEBIRR: new TelebirrUrlPipe(),
-};
+export const URL_VALIDATION_REGISTRY = {
+  CBE: CBE_CONFIG,
+  TELEBIRR: TELEBIRR_CONFIG,
+  EBIRR: EBIRR_CONFIG,
+} as const;

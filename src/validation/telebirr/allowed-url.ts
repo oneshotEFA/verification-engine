@@ -1,1 +1,0 @@
-export const ALLOWED_DOMAINS = ["transactioninfo.ethiotelecom.et"];

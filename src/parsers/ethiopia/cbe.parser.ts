@@ -38,13 +38,15 @@ export class CbeParser implements ParserAndExtractor {
       return { link: this.buildOldLink(idParamMatch[1], accountNumber) };
 
     const ftMatch = cleaned.match(/\b(FT[A-Z0-9]{8,})\b/i);
-    if (ftMatch)
-      return { link: this.buildOldLink(ftMatch[1], accountNumber) };
+    if (ftMatch) return { link: this.buildOldLink(ftMatch[1], accountNumber) };
 
     throw new Error("No valid CBE transaction link found in SMS");
   }
 
-  transactionRef(transactionRef: string, accountNumber?: string): { link: string } {
+  transactionRef(
+    transactionRef: string,
+    accountNumber?: string,
+  ): { link: string } {
     return { link: this.buildOldLink(transactionRef, accountNumber) };
   }
 
@@ -80,15 +82,15 @@ export class CbeParser implements ParserAndExtractor {
     link: string,
     context?: ParserFetchContext,
   ): Promise<{ page: Buffer }> {
-    const match = link.match(/mbreciept\.cbe\.com\.et\/([A-Z0-9]+-\d+)/i);
+    const match = link.match(/Mbreciept\.cbe\.com\.et\/([A-Z0-9][A-Z0-9-]+)/i);
     if (!match) throw new Error("Invalid new-format CBE link");
 
-    const txnId = match[1].toUpperCase();
+    const txnId = match[1];
     const url = `https://mb.cbe.com.et/api/v1/transactions/public/transaction-detail/${txnId}`;
     const fetcher = context?.fetcher ?? this.fallbackFetcher;
 
     const response = await fetcher.fetch(url, context?.countryCode ?? "ET", {
-      timeoutMs: 30000,
+      timeoutMs: 25000,
       validateStatus: () => true,
       headers: {
         "User-Agent":
@@ -127,7 +129,7 @@ export class CbeParser implements ParserAndExtractor {
     const fetcher = context?.fetcher ?? this.fallbackFetcher;
     const response = await fetcher.fetch(link, context?.countryCode ?? "ET", {
       responseType: "arraybuffer",
-      timeoutMs: 30000,
+      timeoutMs: 25000,
       validateStatus: () => true,
       headers: { "User-Agent": "Mozilla/5.0", Accept: "application/pdf" },
     });

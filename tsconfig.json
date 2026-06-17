@@ -15,6 +15,12 @@
     "strictNullChecks": true,
     "noImplicitAny": false
   },
-  "include": ["src/**/*"],
+  "include": [
+    "src/**/*",
+    "tests/boa.spec.ts",
+    "tests/cbe-validator.spec.ts",
+    "tests/ebirr.spec.ts",
+    "tests/telebirr.spec.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }

@@ -84,7 +84,6 @@ export class CbeParser implements ParserAndExtractor {
   ): Promise<{ page: Buffer }> {
     const match = link.match(/Mbreciept\.cbe\.com\.et\/([A-Z0-9][A-Z0-9-]+)/i);
     if (!match) throw new Error("Invalid new-format CBE link");
-
     const txnId = match[1];
     const url = `https://mb.cbe.com.et/api/v1/transactions/public/transaction-detail/${txnId}`;
     const fetcher = context?.fetcher ?? this.fallbackFetcher;

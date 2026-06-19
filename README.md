@@ -1,24 +1,25 @@
 <div align="center">
-
 <img src="https://res.cloudinary.com/dghrszcz9/image/upload/v1781601985/logo_l9vw1h.jpg" alt="LocalPay" width="72" height="72" />
 
+  
 # @localpay/verification-engine
 
-**Bank receipt verification engine for Ethiopian banks**
+**Bank receipt verification engine for Ethiopian and East African banks**
 
 [![npm version](https://img.shields.io/npm/v/@localpay/verification-engine?color=00C896&labelColor=0D1117&style=flat-square)](https://www.npmjs.com/package/@localpay/verification-engine)
 [![npm downloads](https://img.shields.io/npm/dm/@localpay/verification-engine?color=00C896&labelColor=0D1117&style=flat-square)](https://www.npmjs.com/package/@localpay/verification-engine)
 [![License: MIT](https://img.shields.io/badge/license-MIT-00C896?labelColor=0D1117&style=flat-square)](./LICENSE)
-[![DOCS](https://img.shields.io/badge/docs-localpay-00C896?labelColor=0D1117&style=flat-square)](https://local-pay-ten.vercel.app/)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-00C896?labelColor=0D1117&style=flat-square)](https://nodejs.org)
+[![docs](https://img.shields.io/badge/docs-localpay-00C896?labelColor=0D1117&style=flat-square)](https://local-pay-ten.vercel.app)
 [![CI](https://img.shields.io/github/actions/workflow/status/oneshotEFA/verification-engine/ci.yml?branch=publish&label=CI&color=00C896&labelColor=0D1117&style=flat-square)](https://github.com/oneshotEFA/verification-engine/actions)
 
 <p>
-Verify bank transfer receipts in real time — from SMS, links, transaction IDs, or screenshots.<br/>
-No framework lock-in. Works in any Node.js project.
+Verify Ethiopian bank transfer receipts in real time.<br/>
+Supports SMS, receipt links, transaction references, and OCR screenshots.<br/>
+Zero framework dependencies — works in any Node.js project.
 </p>
 
-[Installation](#installation) · [Quick Start](#quick-start) · [Supported Banks](#supported-banks) · [Verification Methods](#verification-methods) · [Proxy Support](#proxy-support) · [Adding a Bank](#adding-a-new-bank) · [NestJS](#nestjs-integration)
+[Installation](#installation) · [Quick Start](#quick-start) · [Supported Banks](#supported-banks) · [Verification Methods](#verification-methods) · [URL Validation](#url-validation) · [Proxy Support](#proxy-support) · [Adding a Bank](#adding-a-new-bank) · [NestJS](#nestjs-integration)
 
 </div>
 
@@ -27,11 +28,12 @@ No framework lock-in. Works in any Node.js project.
 ## Features
 
 - 🏦 **4 Ethiopian banks** — CBE, Telebirr, Bank of Abyssinia, E-Birr
-- 🔗 **5 verification methods** — link, SMS, transaction reference, OCR, screenshot
-- 🌍 **Proxy support** — per-country routing for banks that block foreign IPs
-- ✅ **Amount matching** — configurable tolerance, strips currency symbols automatically
+- 🔗 **5 verification methods** — LINK, SMS, TRANSACTION_REF, OCR, SCREENSHOT
+- 🛡️ **Automatic URL validation** — domain allowlist + structural checks before any network call
+- 🌍 **Proxy support** — per-country routing via a simple interface
+- ✅ **Amount matching** — configurable tolerance, strips currency symbols and commas automatically
 - 🔌 **Zero framework lock-in** — plain TypeScript, no NestJS, no Prisma
-- 🧩 **Extensible** — add any bank by implementing one interface
+- 🧩 **Extensible** — add any bank parser by implementing one interface
 - 📦 **Tree-shakeable** — `sideEffects: false`
 
 ---
@@ -42,12 +44,14 @@ No framework lock-in. Works in any Node.js project.
 npm install @localpay/verification-engine
 ```
 
-> **Optional:** Install `puppeteer` if you verify **Telebirr** or **Bank of Abyssinia** receipts.
-> These banks serve JavaScript-rendered pages that require a headless browser.
+> **Optional:** Install `puppeteer` only if you verify **Telebirr** or **Bank of Abyssinia**
+> receipts — those banks serve JavaScript-rendered pages requiring a headless browser.
 
 ```bash
 npm install puppeteer
 ```
+
+Requires **Node.js ≥ 20**.
 
 ---
 
@@ -66,14 +70,16 @@ const result = await engine.verify({
 });
 
 if (result.status === "SUCCESS") {
-  console.log(result.receipt.receipt.transactionNumber); // "FT26093JCD32"
+  console.log(result.receipt.bank);                      // "CBE"
+  console.log(result.receipt.receipt.transactionNumber); // "FT26093JCD32..."
   console.log(result.receipt.receipt.amount);            // "500"
   console.log(result.receipt.receipt.receiverAccount);   // account number
   console.log(result.receipt.receipt.receiverName);      // account holder name
+  console.log(result.receipt.receipt.date);              // raw date string
 }
 
 if (result.status === "FAIL") {
-  console.error(result.reason); // human-readable failure reason
+  console.error(result.reason);
 }
 ```
 
@@ -83,10 +89,10 @@ if (result.status === "FAIL") {
 
 | Bank | `parserKey` | Methods |
 |------|------------|---------|
-| Commercial Bank of Ethiopia | `CBE` | LINK · SMS · TRANSACTION_REF · OCR |
-| Telebirr | `TELEBIRR` | LINK · SMS · TRANSACTION_REF · OCR |
-| Bank of Abyssinia | `ABYSSINIA` | LINK · SMS · TRANSACTION_REF · OCR |
-| E-Birr | `EBIRR` | LINK · SMS · TRANSACTION_REF · OCR |
+| Commercial Bank of Ethiopia | `CBE` | LINK · SMS · TRANSACTION_REF · OCR · SCREENSHOT |
+| Telebirr | `TELEBIRR` | LINK · SMS · TRANSACTION_REF · OCR · SCREENSHOT |
+| Bank of Abyssinia | `ABYSSINIA` | LINK · SMS · TRANSACTION_REF · OCR · SCREENSHOT |
+| E-Birr | `EBIRR` | LINK · SMS · TRANSACTION_REF · OCR · SCREENSHOT |
 
 ---
 
@@ -94,16 +100,16 @@ if (result.status === "FAIL") {
 
 | Method | `verMethod` | Pass as `rawProof` |
 |--------|------------|-------------------|
-| Receipt URL | `LINK` | Full URL string |
+| Receipt URL | `LINK` | Full HTTPS URL |
 | SMS body | `SMS` | Raw SMS text string |
-| Transaction reference | `TRANSACTION_REF` | Transaction / reference number |
+| Transaction reference | `TRANSACTION_REF` | Transaction or reference number |
 | Image (OCR) | `OCR` | File path string or `Buffer` |
-| Screenshot | `SCREENSHOT` | Alias of `OCR` |
+| Screenshot | `SCREENSHOT` | Alias of `OCR` — identical behaviour |
 
 ### By link
 
 ```ts
-const result = await engine.verify({
+await engine.verify({
   bank: "CBE",
   amount: 500,
   verMethod: "LINK",
@@ -114,7 +120,7 @@ const result = await engine.verify({
 ### By SMS
 
 ```ts
-const result = await engine.verify({
+await engine.verify({
   bank: "TELEBIRR",
   amount: 250,
   verMethod: "SMS",
@@ -126,7 +132,7 @@ const result = await engine.verify({
 ### By transaction reference
 
 ```ts
-const result = await engine.verify({
+await engine.verify({
   bank: "TELEBIRR",
   amount: 250,
   verMethod: "TRANSACTION_REF",
@@ -134,11 +140,11 @@ const result = await engine.verify({
 });
 ```
 
-> **CBE note:** When passing a 12-character base reference (e.g. `FT26093JCD32`),
-> also provide `accountNumber` so the engine can build the full receipt URL.
+> **CBE note:** A 12-character base reference (e.g. `FT26093JCD32`) requires
+> `accountNumber` so the engine can build the full receipt URL.
 
 ```ts
-const result = await engine.verify({
+await engine.verify({
   bank: "CBE",
   amount: 500,
   verMethod: "TRANSACTION_REF",
@@ -150,31 +156,25 @@ const result = await engine.verify({
 ### By screenshot / OCR
 
 ```ts
-const result = await engine.verify({
+await engine.verify({
   bank: "CBE",
   amount: 500,
   verMethod: "OCR",
-  rawProof: "/tmp/receipt-screenshot.png", // or a Buffer
+  rawProof: "/tmp/receipt.png", // or a Buffer
 });
 ```
 
-> OCR uses Tesseract.js internally by default.
-> Supply a custom `ocrReader` for higher accuracy (e.g. Google Cloud Vision):
+Supply a custom `ocrReader` for higher accuracy:
 
 ```ts
 const engine = new VerificationEngine({
   ocrReader: async (input) => {
-    // input is a string path or Buffer
-    const text = await myVisionApi.recognize(input);
-    return text;
+    return myVisionApi.recognize(input);
   },
 });
 ```
 
 ### Amount tolerance
-
-The engine compares `payload.amount` with the parsed receipt amount.
-Use `amountTolerance` when small rounding differences are expected.
 
 ```ts
 await engine.verify({
@@ -184,16 +184,60 @@ await engine.verify({
   verMethod: "LINK",
   rawProof: "https://...",
 });
+// Currency symbols and commas stripped automatically:
+// "ETB 9,540.00" → compared as 9540.00
+```
+
+---
+
+## URL Validation
+
+Every receipt URL is validated before the parser makes any network request.
+Three checks run automatically for every built-in bank:
+
+1. **Protocol** must be `https`
+2. **Domain** must be on the bank's allowed list
+3. **URL structure** must pass the bank-specific `validate()` function
+
+| Bank | Allowed domains |
+|------|----------------|
+| `CBE` | `apps.cbe.com.et`, `mbreciept.cbe.com.et` |
+| `TELEBIRR` | `transactioninfo.ethiotelecom.et` |
+| `EBIRR` | `my.ebirr.com` |
+| `ABYSSINIA` | `cs.bankofabyssinia.com` |
+
+No config needed for built-in banks. For custom banks, pass `urlValidators`:
+
+```ts
+import {
+  VerificationEngine,
+  URL_VALIDATION_REGISTRY,
+  UrlValidationConfig,
+} from "@localpay/verification-engine";
+
+const MY_BANK_CONFIG: UrlValidationConfig = {
+  domains: ["receipts.my-bank.et"],
+  validate(parsed: URL) {
+    if (!parsed.searchParams.get("ref")) {
+      throw new Error("Missing receipt reference.");
+    }
+  },
+};
+
+const engine = new VerificationEngine({
+  urlValidators: {
+    ...URL_VALIDATION_REGISTRY, // keep all built-in validators
+    MY_BANK: MY_BANK_CONFIG,
+  },
+});
 ```
 
 ---
 
 ## Proxy Support
 
-Some banks (notably Telebirr) block requests from foreign IP addresses.
-Implement the `ProxyResolver` interface to provide per-country proxy config
-from your own data store. The engine resolves it transparently — parsers
-never deal with proxy config directly.
+Some banks block foreign IPs (e.g. Telebirr). Implement `ProxyResolver` to
+provide per-country proxy config from your own data store:
 
 ```ts
 import {
@@ -209,8 +253,8 @@ class MyProxyResolver implements ProxyResolver {
     if (!row?.proxyEnabled) return null;
     return {
       enabled: true,
-      url: row.proxyUrl,           // "http://user:pass@proxy.host:8080"
-      type: row.proxyType as ProxyType, // HTTP_CONNECT or SOCKS5
+      url: row.proxyUrl,                 // "http://user:pass@proxy.host:8080"
+      type: row.proxyType as ProxyType,  // HTTP_CONNECT or SOCKS5
     };
   }
 }
@@ -220,45 +264,40 @@ const engine = new VerificationEngine({
 });
 ```
 
-Both `HTTP_CONNECT` (default) and `SOCKS5` proxy types are supported.
-Proxy config is resolved per request — toggling it in your database
-takes effect immediately with no redeploy.
+`ProxyType.HTTP_CONNECT` is the default. Use `SOCKS5` when the bank does
+deep packet inspection or blocks CONNECT tunnels.
 
 ---
 
 ## Adding a New Bank
 
-Implement the `ParserAndExtractor` interface:
+Implement `ParserAndExtractor`:
 
 ```ts
 import {
   ParserAndExtractor,
   ParserFetchContext,
   RawReceipt,
+  PARSER_REGISTRY,
+  VerificationEngine,
 } from "@localpay/verification-engine";
 
 export class MyBankParser implements ParserAndExtractor {
-  /** Extract receipt URL from SMS body or OCR text */
   extract(text: string, accountNumber?: string): { link: string } {
-    const match = text.match(/my-bank\.com\/receipt\/([A-Z0-9]+)/i);
+    const match = text.match(/my-bank\.et\/receipt\/([A-Z0-9]+)/i);
     if (!match) return { link: "" };
-    return { link: `https://my-bank.com/receipt/${match[1]}` };
+    return { link: `https://my-bank.et/receipt/${match[1]}` };
   }
 
-  /** Build receipt URL directly from a transaction reference */
   transactionRef(ref: string): { link: string } {
-    return { link: `https://my-bank.com/receipt/${ref}` };
+    return { link: `https://my-bank.et/receipt/${ref.toUpperCase()}` };
   }
 
-  /** Download the receipt page — always use context.fetcher for proxy support */
   async fetch(link: string, context?: ParserFetchContext): Promise<{ page: any }> {
-    const response = context
-      ? await context.fetcher.fetch(link, context.countryCode)
-      : await fetch(link).then(async (r) => ({ data: await r.text() }));
-    return { page: response.data };
+    const response = await context?.fetcher.fetch(link, context.countryCode);
+    return { page: response?.data };
   }
 
-  /** Parse the page into a structured receipt */
   async receiptParser(page: any): Promise<{ bank: string; receipt: RawReceipt }> {
     return {
       bank: "MY_BANK",
@@ -272,23 +311,13 @@ export class MyBankParser implements ParserAndExtractor {
     };
   }
 }
-```
-
-Pass it to the engine alongside the built-in parsers:
-
-```ts
-import { VerificationEngine, PARSER_REGISTRY } from "@localpay/verification-engine";
-import { MyBankParser } from "./my-bank.parser";
 
 const engine = new VerificationEngine({
-  parsers: {
-    ...PARSER_REGISTRY,   // keep all built-in banks
-    MY_BANK: new MyBankParser(),
-  },
+  parsers: { ...PARSER_REGISTRY, MY_BANK: new MyBankParser() },
 });
 ```
 
-Check registered banks at runtime:
+Check registered banks:
 
 ```ts
 engine.getSupportedBanks();
@@ -298,8 +327,6 @@ engine.getSupportedBanks();
 ---
 
 ## NestJS Integration
-
-The engine is a plain class — wrap it in a NestJS service:
 
 ```ts
 import { Injectable } from "@nestjs/common";
@@ -320,7 +347,6 @@ export class VerificationService {
         return { enabled: true, url: row.proxyUrl, type: row.proxyType as any };
       },
     };
-
     this.engine = new VerificationEngine({ proxyResolver });
   }
 
@@ -339,27 +365,28 @@ export class VerificationService {
 | Option | Type | Description |
 |--------|------|-------------|
 | `proxyResolver` | `ProxyResolver \| null` | Per-country proxy config provider |
-| `ocrReader` | `(input: RawProof) => Promise<string>` | Custom OCR function |
+| `ocrReader` | `(input: RawProof) => Promise<string>` | Custom OCR function — defaults to tesseract.js |
 | `parsers` | `ParserRegistry` | Override or extend the parser registry |
+| `urlValidators` | `Record<string, UrlValidationConfig>` | Override or extend URL validators per bank |
 
 ### `engine.verify(payload)`
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `bank` | `string` | ✅ | Parser key e.g. `"CBE"`, `"TELEBIRR"` |
+| `bank` | `string` | ✅ | Parser key — `CBE`, `TELEBIRR`, `ABYSSINIA`, `EBIRR` |
 | `amount` | `number` | ✅ | Expected transfer amount |
-| `verMethod` | `VerificationMethod` | ✅ | How to verify |
-| `rawProof` | `string \| Buffer` | ✅ | The proof to verify |
-| `accountNumber` | `string` | — | Sender account (CBE 12-char refs) |
-| `countryCode` | `string` | — | ISO country code, defaults to `"ET"` |
-| `amountTolerance` | `number` | — | Amount diff tolerance, defaults to `0.01` |
+| `verMethod` | `VerificationMethod` | ✅ | `LINK \| SMS \| TRANSACTION_REF \| OCR \| SCREENSHOT` |
+| `rawProof` | `string \| Buffer` | ✅ | URL, SMS text, ref number, file path, or Buffer |
+| `accountNumber` | `string` | — | Sender account — required for CBE 12-char refs |
+| `countryCode` | `string` | — | ISO country code for proxy routing. Default: `ET` |
+| `amountTolerance` | `number` | — | Max allowed amount difference. Default: `0.01` |
 
-### Result
+### Result type
 
 ```ts
 type VerifyResult =
   | { status: "SUCCESS"; receipt: { bank: string; receipt: RawReceipt } }
-  | { status: "FAIL";    reason: string };
+  | { status: "FAIL";    reason: string }
 ```
 
 ### `RawReceipt`
@@ -367,8 +394,8 @@ type VerifyResult =
 ```ts
 interface RawReceipt {
   transactionNumber: string;
-  date:              string;
-  amount:            string;
+  date:              string; // use safeParsDate() to convert to Date
+  amount:            string; // may include currency symbol
   receiverAccount:   string;
   receiverName:      string;
 }
@@ -381,50 +408,33 @@ interface RawReceipt {
 ```ts
 import { safeParsDate, parseDate } from "@localpay/verification-engine";
 
-// Returns null instead of throwing on bad input
-safeParsDate("18-03-2026 21:46:09"); // → Date object
-safeParsDate("not a date");          // → null
+safeParsDate("18-03-2026 21:46:09");           // → Date  (Telebirr)
+safeParsDate("2026-02-11 20:07:02 +0300 EAT"); // → Date  (eBirr)
+safeParsDate("3/11/2026, 6:15:00 PM");         // → Date  (CBE PDF)
+safeParsDate("23/01/26 14:04");                // → Date  (BOA)
+safeParsDate("not a date");                    // → null  (never throws)
 
-// Throws on unrecognised format
-parseDate("18-03-2026 21:46:09");    // → Date object
+parseDate("not a date"); // → throws: Unsupported date format
 ```
-
-Supported date formats:
-
-| Bank | Format example |
-|------|---------------|
-| eBirr | `2026-02-11 20:07:02 +0300 EAT` |
-| Telebirr | `18-03-2026 21:46:09` |
-| CBE PDF | `3/11/2026, 6:15:00 PM` |
-| BOA | `23/01/26 14:04` · `23/01/2026 14:04` |
 
 ---
 
 ## Contributing
 
 ```bash
-# Clone and install
 git clone https://github.com/oneshotEFA/verification-engine.git
 cd verification-engine
 npm install
-
-# Build
 npm run build
-
-# Run tests
 npm test
-
-# Type-check only
-npm run lint
 ```
 
-To add a new bank:
+**Flow:**
+```
+feature-branch → PR to cont → tests pass → merge → npm version patch → git push --follow-tags → auto-publish
+```
 
-1. Create `src/parsers/<country>/<bank>.parser.ts`
-2. Implement `ParserAndExtractor`
-3. Export from `src/parsers/<country>/index.ts`
-4. Spread into `src/parsers/index.ts`
-5. Add test cases in `tests/verification-engine.test.js`
+Adding a bank: create parser → add to country registry → spread into master registry → add tests.
 
 ---
 

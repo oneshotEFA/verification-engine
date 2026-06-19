@@ -71,11 +71,11 @@ const result = await engine.verify({
 
 if (result.status === "SUCCESS") {
   console.log(result.receipt.bank);                      // "CBE"
-  console.log(result.receipt.receipt.transactionNumber); // "FT26093JCD32..."
-  console.log(result.receipt.receipt.amount);            // "500"
-  console.log(result.receipt.receipt.receiverAccount);   // account number
-  console.log(result.receipt.receipt.receiverName);      // account holder name
-  console.log(result.receipt.receipt.date);              // raw date string
+  console.log(result.receipt.transactionNumber); // "FT26093JCD32..."
+  console.log(result.receipt.amount);            // "500"
+  console.log(result.receipt.receiverAccount);   // account number
+  console.log(result.receipt.receiverName);      // account holder name
+  console.log(result.receipt.date);              // raw date string
 }
 
 if (result.status === "FAIL") {

@@ -17,10 +17,10 @@
   },
   "include": [
     "src/**/*",
-    "tests/boa.spec.ts",
-    "tests/cbe-validator.spec.ts",
-    "tests/ebirr.spec.ts",
-    "tests/telebirr.spec.ts"
+    "tests/boa.test.ts",
+    "tests/cbe-validator.test.ts",
+    "tests/ebirr.test.ts",
+    "tests/telebirr.test.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

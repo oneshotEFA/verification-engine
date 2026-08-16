@@ -27,7 +27,7 @@ Zero framework dependencies — works in any Node.js project.
 
 ## Features
 
-- 🏦 **4 Ethiopian banks** — CBE, Telebirr, Bank of Abyssinia, E-Birr
+- 🏦 **5 Ethiopian banks** — CBE, Telebirr, Bank of Abyssinia, E-Birr, Awash Bank
 - 🔗 **5 verification methods** — LINK, SMS, TRANSACTION_REF, OCR, SCREENSHOT
 - 🛡️ **Automatic URL validation** — domain allowlist + structural checks before any network call
 - 🌍 **Proxy support** — per-country routing via a simple interface
@@ -93,6 +93,7 @@ if (result.status === "FAIL") {
 | Telebirr | `TELEBIRR` | LINK · SMS · TRANSACTION_REF · OCR · SCREENSHOT |
 | Bank of Abyssinia | `ABYSSINIA` | LINK · SMS · TRANSACTION_REF · OCR · SCREENSHOT |
 | E-Birr | `EBIRR` | LINK · SMS · TRANSACTION_REF · OCR · SCREENSHOT |
+| Awash Bank | `AWASH` | LINK · SMS · TRANSACTION_REF · OCR · SCREENSHOT |
 
 ---
 
@@ -205,6 +206,7 @@ Three checks run automatically for every built-in bank:
 | `TELEBIRR` | `transactioninfo.ethiotelecom.et` |
 | `EBIRR` | `my.ebirr.com` |
 | `ABYSSINIA` | `cs.bankofabyssinia.com` |
+| `AWASH` | `awashpay.awashbank.com` |
 
 No config needed for built-in banks. For custom banks, pass `urlValidators`:
 

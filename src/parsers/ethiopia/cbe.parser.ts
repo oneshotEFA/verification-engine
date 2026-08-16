@@ -1,4 +1,5 @@
 import pdf from "pdf-parse";
+import { JSDOM } from "jsdom";
 import { BankFetchService } from "../../core/bank-fetch.service";
 import {
   ParserAndExtractor,
@@ -17,6 +18,16 @@ export class CbeParser implements ParserAndExtractor {
       .replace(/\?\s+/g, "?")
       .replace(/=\s+/g, "=");
 
+    // v2 format: https://mbreciept.cbe.com.et/v2-hfHCxGkik5jOG1UM9oqH
+    const v2Format = cleaned.match(
+      /https?:\/\/[Mm]breciept\.cbe\.com\.et\/(v2-[A-Za-z0-9_-]+)/i,
+    );
+    if (v2Format) {
+      return {
+        link: `https://mbreciept.cbe.com.et/${v2Format[1]}`,
+      };
+    }
+
     // New format: https://Mbreciept.cbe.com.et/FT26093JCD32-18872366
     const newFormat = cleaned.match(
       /https?:\/\/[Mm]breciept\.cbe\.com\.et\/([A-Z0-9]+-\d+)/i,
@@ -28,7 +39,7 @@ export class CbeParser implements ParserAndExtractor {
     }
 
     const oldUrlMatch = cleaned.match(
-      /https?:\/\/apps\.cbe\.com\.et:\d+\/\?i{1,2}d=([A-Z0-9]+)/i,
+      /https?:\/\/apps\.cbe\.com\.et:\d+\/?\?i{1,2}d=([A-Z0-9]+)/i,
     );
     if (oldUrlMatch)
       return { link: this.buildOldLink(oldUrlMatch[1], accountNumber) };
@@ -54,6 +65,9 @@ export class CbeParser implements ParserAndExtractor {
     link: string,
     context?: ParserFetchContext,
   ): Promise<{ page: any }> {
+    if (this.isV2Format(link)) {
+      return this.fetchV2Json(link, context);
+    }
     return this.isNewFormat(link)
       ? this.fetchJson(link, context)
       : this.fetchPdf(link, context);
@@ -74,9 +88,182 @@ export class CbeParser implements ParserAndExtractor {
       return this.parseJson(buf.slice(5));
     }
 
+    if (prefix === "HTML:") {
+      return this.parseV2Html(buf.slice(5).toString("utf-8"));
+    }
+
     const pdfBuf = prefix === "PDF:" ? buf.slice(4) : buf;
     return this.parsePdf(pdfBuf);
   }
+
+  // ------------------------------------------------------------------
+  // V2 format: mbreciept.cbe.com.et/v2-{TOKEN}
+  // Uses the same API but with v2- prefix on the token.
+  // Falls back to parsing the SSR HTML if the API fails.
+  // ------------------------------------------------------------------
+
+  private async fetchV2Json(
+    link: string,
+    context?: ParserFetchContext,
+  ): Promise<{ page: Buffer }> {
+    const match = link.match(/mbreciept\.cbe\.com\.et\/(v2-[A-Za-z0-9_-]+)/i);
+    if (!match) throw new Error("Invalid v2 CBE link");
+    const token = match[1]; // e.g. "v2-hfHCxGkik5jOG1UM9oqH"
+    const url = `https://mb.cbe.com.et/api/v1/transactions/public/transaction-detail/${token}`;
+
+    const fetcher = context?.fetcher ?? this.fallbackFetcher;
+    let response;
+    try {
+      response = await fetcher.fetch(url, context?.countryCode ?? "ET", {
+        timeoutMs: 25000,
+        validateStatus: () => true,
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          Accept: "application/json, text/plain, */*",
+          Origin: "https://mbreciept.cbe.com.et",
+          Referer: "https://mbreciept.cbe.com.et/",
+          "x-app-id": "d1292e42-7400-49de-a2d3-9731caa4c819",
+          "x-app-version": "0a01980b-9859-1369-8198-59f403820000",
+        },
+      });
+    } catch {
+      // Network error — fall back to SSR HTML parsing
+      return this.fetchV2Html(link, context);
+    }
+
+    // If API returns 200 with valid JSON, use it
+    if (
+      response.status === 200 &&
+      response.data &&
+      (typeof response.data === "string" ? response.data.startsWith("{") : true)
+    ) {
+      const json =
+        typeof response.data === "string"
+          ? response.data
+          : JSON.stringify(response.data);
+
+      return {
+        page: Buffer.concat([
+          Buffer.from("JSON:", "utf-8"),
+          Buffer.from(json, "utf-8"),
+        ]),
+      };
+    }
+
+    // API failed (401, 500, etc.) — fall back to parsing the SSR HTML page
+    return this.fetchV2Html(link, context);
+  }
+
+  /**
+   * Fetch the v2 receipt as SSR HTML and prefix with HTML: marker.
+   * Used as a fallback when the JSON API is unavailable.
+   */
+  private async fetchV2Html(
+    link: string,
+    context?: ParserFetchContext,
+  ): Promise<{ page: Buffer }> {
+    const fetcher = context?.fetcher ?? this.fallbackFetcher;
+    const response = await fetcher.fetch(link, context?.countryCode ?? "ET", {
+      timeoutMs: 25000,
+      validateStatus: () => true,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        Accept: "text/html,application/xhtml+xml,*/*",
+      },
+    });
+
+    if (response.status !== 200 || !response.data) {
+      throw new Error(
+        `CBE v2 receipt fetch failed (status ${response.status})`,
+      );
+    }
+
+    const html =
+      typeof response.data === "string"
+        ? response.data
+        : Buffer.from(response.data).toString("utf-8");
+
+    if (!html.includes("Transferred Amount")) {
+      throw new Error(
+        "CBE v2 receipt page does not contain expected receipt data",
+      );
+    }
+
+    return {
+      page: Buffer.concat([
+        Buffer.from("HTML:", "utf-8"),
+        Buffer.from(html, "utf-8"),
+      ]),
+    };
+  }
+
+  /**
+   * Parse the v2 Nuxt SSR HTML receipt.
+   * Fields are in grid divs: <span class="...">Label:</span><span class="...">Value</span>
+   */
+  private parseV2Html(html: string): { bank: string; receipt: RawReceipt } {
+    const dom = new JSDOM(html);
+    const document = dom.window.document;
+
+    const fields = new Map<string, string>();
+    // Match all grid row divs containing label + value spans
+    const rows = document.querySelectorAll("div.grid.grid-cols-2");
+    for (const row of rows) {
+      const spans = row.querySelectorAll("span");
+      if (spans.length >= 2) {
+        const label = (spans[0] as HTMLElement).textContent?.trim() ?? "";
+        const value = (spans[1] as HTMLElement).textContent?.trim() ?? "";
+        if (label.endsWith(":")) {
+          fields.set(label.replace(/:$/, "").trim(), value);
+        }
+      }
+    }
+
+    // Extract the receiver name and account from the sequence of fields.
+    // The HTML has two "Account" fields (Payer's then Receiver's),
+    // so we need to track order.
+    let receiverName = "";
+    let receiverAccount = "";
+    let lastLabel = "";
+
+    for (const [label, value] of fields.entries()) {
+      if (label === "Receiver") {
+        receiverName = value;
+      }
+      if (label === "Account" && lastLabel === "Receiver") {
+        receiverAccount = value;
+      }
+      lastLabel = label;
+    }
+
+    const amount = (fields.get("Transferred Amount") ?? "")
+      .replace(/ETB/gi, "")
+      .replace(/,/g, "")
+      .trim();
+
+    if (!amount) {
+      throw new Error("Could not extract amount from CBE v2 receipt");
+    }
+
+    return {
+      bank: "CBE",
+      receipt: {
+        transactionNumber: (
+          fields.get("Reference No. (VAT Invoice No)") ?? ""
+        ).trim(),
+        date: (fields.get("Payment Date & Time") ?? "").trim(),
+        amount,
+        receiverAccount,
+        receiverName,
+      },
+    };
+  }
+
+  // ------------------------------------------------------------------
+  // Legacy new format: mbreciept.cbe.com.et/{FT_REF}-{ACCOUNT_SUFFIX}
+  // ------------------------------------------------------------------
 
   private async fetchJson(
     link: string,
@@ -121,6 +308,10 @@ export class CbeParser implements ParserAndExtractor {
     };
   }
 
+  // ------------------------------------------------------------------
+  // Old format: apps.cbe.com.et:100/?id=...
+  // ------------------------------------------------------------------
+
   private async fetchPdf(
     link: string,
     context?: ParserFetchContext,
@@ -164,6 +355,10 @@ export class CbeParser implements ParserAndExtractor {
       page: Buffer.concat([Buffer.from("PDF:", "utf-8"), buffer]),
     };
   }
+
+  // ------------------------------------------------------------------
+  // Parsers
+  // ------------------------------------------------------------------
 
   private parseJson(input: Buffer): { bank: string; receipt: RawReceipt } {
     let data: Record<string, any>;
@@ -220,7 +415,7 @@ export class CbeParser implements ParserAndExtractor {
 
         date:
           s
-            .match(/Payment\s*Date\s*&\s*Time\s*([\d\/,: ]+(?:AM|PM))/i)?.[1]
+            .match(/Payment\s*Date\s*&\s*Time\s*([\d\/:, ]+(?:AM|PM))/i)?.[1]
             ?.trim() ?? "",
 
         receiverAccount:
@@ -236,6 +431,14 @@ export class CbeParser implements ParserAndExtractor {
             .trim() ?? "",
       },
     };
+  }
+
+  // ------------------------------------------------------------------
+  // Helpers
+  // ------------------------------------------------------------------
+
+  private isV2Format(link: string): boolean {
+    return /mbreciept\.cbe\.com\.et\/v2-/i.test(link);
   }
 
   private isNewFormat(link: string): boolean {

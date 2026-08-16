@@ -15,11 +15,24 @@ export const CBE_CONFIG: UrlValidationConfig = {
     }
 
     if (parsed.hostname === "mbreciept.cbe.com.et") {
-      const receiptCode = parsed.pathname.replace("/", "");
+      const pathname = parsed.pathname.replace("/", "");
 
-      const isValid = /^[A-Z0-9-]+$/i.test(receiptCode);
+      if (!pathname) {
+        throw new Error("Missing receipt code.");
+      }
 
-      if (!receiptCode || !isValid) {
+      // v2 format: v2-{base64url_token} (e.g. v2-hfHCxGkik5jOG1UM9oqH)
+      if (pathname.startsWith("v2-")) {
+        const token = pathname.slice(3);
+        if (!/^[A-Za-z0-9_-]+$/.test(token)) {
+          throw new Error("Invalid v2 receipt token.");
+        }
+        return;
+      }
+
+      // Legacy new-format: {FT_REF}-{ACCOUNT_SUFFIX} (e.g. FT26093JCD32-18872366)
+      const isValid = /^[A-Z0-9-]+$/i.test(pathname);
+      if (!isValid) {
         throw new Error("Invalid receipt code.");
       }
     }

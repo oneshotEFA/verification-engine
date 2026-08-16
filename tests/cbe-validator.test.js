@@ -13,9 +13,25 @@ describe("CBE URL Validation", () => {
     assert.ok(result.includes("apps.cbe.com.et"));
   });
 
-  it("should accept new receipt format", () => {
+  it("should accept new receipt format (FT-ACCOUNT)", () => {
     const result = validateReceiptUrl(
       "https://mbreciept.cbe.com.et/FT26093JCD3218872366",
+      CBE_CONFIG,
+    );
+    assert.ok(result.includes("mbreciept.cbe.com.et"));
+  });
+
+  it("should accept v2 receipt format", () => {
+    const result = validateReceiptUrl(
+      "https://mbreciept.cbe.com.et/v2-hfHCxGkik5jOG1UM9oqH",
+      CBE_CONFIG,
+    );
+    assert.ok(result.includes("mbreciept.cbe.com.et"));
+  });
+
+  it("should accept v2 receipt with underscores", () => {
+    const result = validateReceiptUrl(
+      "https://mbreciept.cbe.com.et/v2-abc_def-123_XYZ",
       CBE_CONFIG,
     );
     assert.ok(result.includes("mbreciept.cbe.com.et"));
@@ -48,6 +64,24 @@ describe("CBE URL Validation", () => {
     assert.throws(
       () => validateReceiptUrl("https://apps.cbe.com.et:100/", CBE_CONFIG),
       { message: "Missing receipt ID." },
+    );
+  });
+
+  it("should reject v2 with invalid token characters", () => {
+    assert.throws(
+      () =>
+        validateReceiptUrl(
+          "https://mbreciept.cbe.com.et/v2-hello@world!",
+          CBE_CONFIG,
+        ),
+      { message: "Invalid v2 receipt token." },
+    );
+  });
+
+  it("should reject empty mbreciept path", () => {
+    assert.throws(
+      () => validateReceiptUrl("https://mbreciept.cbe.com.et/", CBE_CONFIG),
+      { message: "Missing receipt code." },
     );
   });
 });

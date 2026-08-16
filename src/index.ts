@@ -16,7 +16,7 @@ export { CbeParser } from "./parsers/ethiopia/cbe.parser";
 export { TelebirrParser } from "./parsers/ethiopia/telebirr.parser";
 export { AbyssiniaParser } from "./parsers/ethiopia/abyssinia.parser";
 export { EBirrParser } from "./parsers/ethiopia/ebirr.parser";
-
+export { AwashParser } from "./parsers/ethiopia/awash.parser";
 // ── Shared types & interfaces ─────────────────────────────────────────────────
 export type {
   ParserAndExtractor,

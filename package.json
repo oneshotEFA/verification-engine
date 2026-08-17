@@ -1,6 +1,6 @@
 {
   "name": "@localpay/verification-engine",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Bank receipt verification engine for Ethiopian and East African banks",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

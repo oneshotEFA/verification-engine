@@ -58,6 +58,10 @@ export class CbeParser implements ParserAndExtractor {
     transactionRef: string,
     accountNumber?: string,
   ): { link: string } {
+    // If it's already a full receipt URL, pass it through directly
+    if (/^https?:\/\//i.test(transactionRef)) {
+      return { link: transactionRef.trim() };
+    }
     return { link: this.buildOldLink(transactionRef, accountNumber) };
   }
 
@@ -106,7 +110,9 @@ export class CbeParser implements ParserAndExtractor {
     link: string,
     context?: ParserFetchContext,
   ): Promise<{ page: Buffer }> {
-    const match = link.match(/mbreciept\.cbe\.com\.et\/(v2-[A-Za-z0-9_-]+)/i);
+    const match = link.match(
+      /mbreciept\.cbe\.com\.et\/(v2-[A-Za-z0-9_-]+)/i,
+    );
     if (!match) throw new Error("Invalid v2 CBE link");
     const token = match[1]; // e.g. "v2-hfHCxGkik5jOG1UM9oqH"
     const url = `https://mb.cbe.com.et/api/v1/transactions/public/transaction-detail/${token}`;
@@ -136,7 +142,9 @@ export class CbeParser implements ParserAndExtractor {
     if (
       response.status === 200 &&
       response.data &&
-      (typeof response.data === "string" ? response.data.startsWith("{") : true)
+      (typeof response.data === "string"
+        ? response.data.startsWith("{")
+        : true)
     ) {
       const json =
         typeof response.data === "string"
@@ -203,7 +211,9 @@ export class CbeParser implements ParserAndExtractor {
    * Parse the v2 Nuxt SSR HTML receipt.
    * Fields are in grid divs: <span class="...">Label:</span><span class="...">Value</span>
    */
-  private parseV2Html(html: string): { bank: string; receipt: RawReceipt } {
+  private parseV2Html(
+    html: string,
+  ): { bank: string; receipt: RawReceipt } {
     const dom = new JSDOM(html);
     const document = dom.window.document;
 

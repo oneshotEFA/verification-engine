@@ -4,6 +4,7 @@ import { TelebirrParser } from "./telebirr.parser";
 import { AbyssiniaParser } from "./abyssinia.parser";
 import { EBirrParser } from "./ebirr.parser";
 import { AwashParser } from "./awash.parser";
+import { DashenParser } from "./dashen.parser";
 
 export const ETHIOPIA_PARSER_REGISTRY: ParserRegistry = {
   CBE: new CbeParser(),
@@ -11,4 +12,5 @@ export const ETHIOPIA_PARSER_REGISTRY: ParserRegistry = {
   ABYSSINIA: new AbyssiniaParser(),
   EBIRR: new EBirrParser(),
   AWASH: new AwashParser(),
+  DASHEN: new DashenParser(),
 };
